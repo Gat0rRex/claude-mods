@@ -1,0 +1,7 @@
+{
+  "name": "review-gate",
+  "version": "0.1.0",
+  "author": { "name": "Gat0rRex" },
+  "description": "A band above the prompt counting the files edited since a reviewer agent last finished; database files wait for db-adversarial-reviewer.",
+  "types": "./types/index.d.ts"
+}

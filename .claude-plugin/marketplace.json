@@ -1,0 +1,29 @@
+{
+  "name": "claude-mods",
+  "owner": {
+    "name": "Gat0rRex"
+  },
+  "description": "Claude Code mods: context band, loose ends, checkpoint watch, review gate, agent spend.",
+  "plugins": [
+    {
+      "name": "context-band",
+      "source": "./context-band"
+    },
+    {
+      "name": "loose-ends",
+      "source": "./loose-ends"
+    },
+    {
+      "name": "checkpoint-watch",
+      "source": "./checkpoint-watch"
+    },
+    {
+      "name": "review-gate",
+      "source": "./review-gate"
+    },
+    {
+      "name": "agent-spend",
+      "source": "./agent-spend"
+    }
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "name": "checkpoint-watch",
+  "version": "0.1.0",
+  "author": { "name": "Gat0rRex" },
+  "description": "A band above the prompt saying how old the project's Checkpoint.md is and how many file edits it is behind, with a toast when it falls well behind.",
+  "types": "./types/index.d.ts"
+}

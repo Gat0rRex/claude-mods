@@ -1,0 +1,7 @@
+{
+  "name": "loose-ends",
+  "version": "0.1.0",
+  "author": { "name": "Gat0rRex" },
+  "description": "A band above the prompt listing what Claude started and left running: background shells, terminal tabs it opened, preview servers.",
+  "types": "./types/index.d.ts"
+}

@@ -1,0 +1,7 @@
+{
+  "name": "context-band",
+  "version": "0.3.0",
+  "author": { "name": "Gat0rRex" },
+  "description": "A band above the prompt showing how full the context is (amber from 150k tokens, red from 200k), the session's cost and the plan's usage limits, with a toast at each line crossed.",
+  "types": "./types/index.d.ts"
+}

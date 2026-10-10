@@ -1,0 +1,6 @@
+# Written by Claude Code for the editor when a mod loads; regenerated, never edited.
+*/.claude-plugin/types/
+*/.claude-plugin/tsconfig.json
+node_modules/
+.DS_Store
+Thumbs.db
