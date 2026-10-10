@@ -197,3 +197,17 @@ test('a short pane still gets every row', async ($, on) => {
   expect(lines.filter(text => text.startsWith('Explore'))).toHaveLength(6)
   expect(lines[0]).toMatch(/^agent\s+model/)
 })
+
+test('/agent-spend names an unpriced model in its summary', async ($, on) => {
+  stubEngine(on)
+  await spawn($, 'scout-haiku', 'h1')
+  await finish($, 'h1', usage('claude-haiku-5-5', 1_000, 100))
+
+  const ran = await $.command.run({
+    command: 'agent-spend',
+    args: '',
+    origin: { kind: 'composer' },
+    presentation: { isFullscreen: false, columns: 120 },
+  })
+  expect(ran.text).toBe('Agent spend pane opened: 1 subagent, ≈ $0.00 + unpriced.')
+})

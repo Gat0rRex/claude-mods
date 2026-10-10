@@ -431,7 +431,11 @@ export const register: Register = on => {
     await $.ui.open({ id: PANE, title: 'Agent spend' })
     const rows = Object.values(await read($, agentsAtom))
     const total = rows.reduce((sum, row) => sum + row.usd, 0)
-    return { text: `Agent spend pane opened: ${rows.length} subagent${rows.length === 1 ? '' : 's'}, ≈ $${total.toFixed(2)}.` }
+    // Same wording as the pane's footer: an unpriced model is said, not hidden in $0.00.
+    const unpriced = rows.some(row => row.hasUnpriced) ? ' + unpriced' : ''
+    return {
+      text: `Agent spend pane opened: ${rows.length} subagent${rows.length === 1 ? '' : 's'}, ≈ $${total.toFixed(2)}${unpriced}.`,
+    }
   })
 
   /**
