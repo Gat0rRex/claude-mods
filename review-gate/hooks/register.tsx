@@ -42,9 +42,29 @@
 //   agent.spawn (a reviewer type) ─────────────────> addReviewer()  ─┼─> $.state 'gate' ──> ui.render AbovePrompt
 //   turn.complete (a reviewer's loop) ─────────────> finishReview() ─┤
 //   command.run /review-gate clear ────────────────> empties 'pending' ┘
+//   each of the three changes above ───────────────> saveGate() ─> $.store 'gate:<root>'
+//   session.start / turn.start ────────────────────> ensureLoaded() <─ $.store 'gate:<root>'
 //   session.end (/clear, files waiting) ───────────> a toast naming the count
 //
 //   prompt.submit (the user typed) ──> reads 'gate' ──> adds one context line for the model
+//
+// SURVIVING A RESTART
+// `$.state` lives with the session's process: an app restart starts it
+// empty. So the counter and the pending files are also saved in `$.store`
+// (a JSON file of the plugin's own, kept between sessions), one key per
+// project root: `gate:<root>`. The root is the session's at the first load
+// and stays pinned: a later `/cd` keeps writing to the same key. A git
+// worktree is its own root, so its own list (it is its own checkout). The
+// root is used as the host spells it, so `c:\` and `C:\` would be two lists.
+// The list is loaded when the session starts (or before the first edit, if
+// that comes first) and saved after every change; an empty list deletes its
+// key. Reviewers in flight are not saved: they die with the process, and
+// their answers can't arrive afterwards. The store is a lagging copy and
+// `$.state` stays the authority: two saves that overlap can land out of
+// order, which the next change's save repairs; only a crash in that window
+// loses that one save. Two sessions open on the same project share the key,
+// and the last save wins; the next change in either session writes its own
+// view again.
 //
 // SHARING THE BAND
 // The band above the prompt is one slot shared by every mod hooking it. This
@@ -61,7 +81,7 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 
-import type { Gate, PendingEdit } from '../types'
+import type { Gate, PendingEdit, SavedGate } from '../types'
 
 // ---------------------------------------------------------------------------
 // Configuration
@@ -104,7 +124,7 @@ const NAMED_IN_BAND = 3
 // The atom is a named slot in the host's session state (`$.state`), declared
 // in types/index.d.ts. It survives a hot reload; module variables do not.
 // Writing it redraws every drawing that read it.
-const EMPTY_GATE: Gate = { seq: 0, pending: {}, reviewers: {} }
+const EMPTY_GATE: Gate = { seq: 0, pending: {}, reviewers: {}, root: null }
 const gateAtom = atom({ plugin: 'review-gate', key: 'gate' } as const, EMPTY_GATE)
 
 // ---------------------------------------------------------------------------
@@ -205,6 +225,114 @@ export function describeGate(gate: Gate): { text: string; look: 'dim' | 'warning
 }
 
 // ---------------------------------------------------------------------------
+// Saving and loading (the store side)
+// ---------------------------------------------------------------------------
+
+/** The store key for a project's list. */
+function storeKey(root: string): string {
+  return `gate:${root}`
+}
+
+/**
+ * Reads a saved list back, or null when it is missing or not the expected
+ * shape (an older version's, or edited by hand). Each entry is checked, so
+ * one bad entry is dropped rather than the whole list. Exported for tests.
+ */
+export function parseSaved(value: unknown): SavedGate | null {
+  if (typeof value !== 'object' || value === null) {
+    return null
+  }
+  const { seq, pending } = value as { seq?: unknown; pending?: unknown }
+  if (typeof seq !== 'number' || typeof pending !== 'object' || pending === null) {
+    return null
+  }
+  const kept: Record<string, PendingEdit> = {}
+  for (const [key, edit] of Object.entries(pending as Record<string, unknown>)) {
+    const { path, seq: editSeq, isDb } = (edit ?? {}) as { path?: unknown; seq?: unknown; isDb?: unknown }
+    if (typeof path === 'string' && typeof editSeq === 'number' && typeof isDb === 'boolean') {
+      kept[key] = { path, seq: editSeq, isDb }
+    }
+  }
+  return { seq, pending: kept }
+}
+
+/**
+ * Whether 'gate' has been loaded from the store (it names its root). A
+ * `typeof` test, not `!== null`: a gate written by 0.1.0 has no `root` field
+ * at all, and `$.state` survives a hot reload, so after an upgrade the field
+ * reads as undefined (the atom's initial only applies to a value never
+ * written). Undefined has to mean "not loaded" too. Exported for tests.
+ */
+export function isLoaded(gate: { root?: unknown }): boolean {
+  return typeof gate.root === 'string'
+}
+
+/**
+ * JOB: load this project's saved list into the session, once.
+ *
+ * Triggered by: session.start, turn.start, and the start of each change
+ *               job, so the list is in place before anything reads or
+ *               changes it. A no-op once 'gate' names its root.
+ * Calls:        `$.session.root()` and `$.store.get('gate:<root>')`. A store
+ *               that fails to read counts as nothing saved: the gate still
+ *               works for this session, it just starts empty.
+ * Dispatches:   one write to 'gate': the saved files merged with any already
+ *               held, the counter at the higher of the two, the root set.
+ */
+async function ensureLoaded($: EngineInterface): Promise<void> {
+  if (isLoaded(await read($, gateAtom))) {
+    return
+  }
+  // No root (a host error, a hook refusing it): stay unloaded, so the gate
+  // works for this session alone and tries again on the next call.
+  const rawRoot = await $.session.root().catch(() => undefined)
+  if (rawRoot === undefined) {
+    return
+  }
+  const root = normalise(rawRoot)
+  const saved = parseSaved(await $.store.get(storeKey(root)).catch(() => undefined))
+  await update($, gateAtom, gate =>
+    isLoaded(gate)
+      ? gate // another hook loaded it while this one read the store
+      : {
+          ...gate,
+          root,
+          seq: Math.max(gate.seq, saved?.seq ?? 0),
+          pending: { ...(saved?.pending ?? {}), ...gate.pending },
+        },
+  )
+}
+
+/**
+ * JOB: save the list for this project.
+ *
+ * Triggered by: each change job (recordEdit, finishReview, the clear
+ *               command), right after its write to 'gate'.
+ * Reads:        'gate' as it stands now, the whole list. Two saves that
+ *               overlap (a subagent's edit as a reviewer finishes) can land
+ *               out of order and leave the store one change behind; the
+ *               next change writes the full list again. Serialising saves
+ *               isn't worth it for a copy that only matters after a crash.
+ * Dispatches:   `$.store.set('gate:<root>', { seq, pending })`, or
+ *               `$.store.delete` when nothing waits, so finished projects
+ *               leave no key behind. A failed save is dropped: persistence
+ *               is a convenience, never a reason to fail a tool call.
+ */
+async function saveGate($: EngineInterface): Promise<void> {
+  const gate = await read($, gateAtom)
+  // Not loaded (see isLoaded): no root, so nowhere to save.
+  if (!isLoaded(gate) || gate.root === null) {
+    return
+  }
+  const key = storeKey(gate.root)
+  const saving =
+    Object.keys(gate.pending).length === 0
+      ? $.store.delete(key)
+      : $.store.set(key, { seq: gate.seq, pending: gate.pending } satisfies SavedGate)
+  await saving.catch(() => undefined)
+}
+
+// ---------------------------------------------------------------------------
 // Jobs
 // ---------------------------------------------------------------------------
 
@@ -214,14 +342,16 @@ export function describeGate(gate: Gate): { text: string; look: 'dim' | 'warning
  * Triggered by: the tool.call listener, after an edit tool succeeded.
  * Dispatches:   one write to 'gate': the counter moves on and the file is
  *               (re)marked pending with the new number, so a reviewer
- *               already running no longer covers it.
+ *               already running no longer covers it; then saveGate().
  */
 async function recordEdit($: EngineInterface, rawPath: string): Promise<void> {
+  await ensureLoaded($)
   const path = normalise(rawPath)
   await update($, gateAtom, gate => {
     const seq = gate.seq + 1
     return { ...gate, seq, pending: { ...gate.pending, [path]: { path, seq, isDb: isDbPath(path) } } }
   })
+  await saveGate($)
 }
 
 /**
@@ -244,9 +374,11 @@ async function addReviewer($: EngineInterface, agentId: string, type: string, re
  *               answered (not interrupted, not an API error), the files it
  *               covers are cleared: ordinary files for a general reviewer,
  *               database files for db-adversarial-reviewer, and in both
- *               cases only those last edited before it was spawned.
+ *               cases only those last edited before it was spawned; then
+ *               saveGate().
  */
 async function finishReview($: EngineInterface, agentId: string, didAnswer: boolean): Promise<void> {
+  await ensureLoaded($)
   await update($, gateAtom, gate => {
     const reviewer = gate.reviewers[agentId]
     if (reviewer === undefined) {
@@ -266,6 +398,7 @@ async function finishReview($: EngineInterface, agentId: string, didAnswer: bool
     }
     return { ...gate, pending, reviewers }
   })
+  await saveGate($)
 }
 
 // ---------------------------------------------------------------------------
@@ -395,9 +528,9 @@ export const register: Register = on => {
    *               the process under a new conversation.
    * Reacts by:    on a /clear with files still waiting, a toast saying so.
    *               A /clear usually marks a task boundary, exactly when an
-   *               unreviewed change matters, and whether the host keeps
-   *               `$.state` across a /clear is unspecified: if it does, the
-   *               band carries on; if not, the toast is the last word.
+   *               unreviewed change matters. The list itself is not lost:
+   *               it is saved per project and comes back in the new
+   *               conversation (see SURVIVING A RESTART).
    * Dispatches:   $.ui.toast. One read and one toast, inside the short time
    *               bound all session.end hooks share.
    */
@@ -418,14 +551,34 @@ export const register: Register = on => {
    *
    * Triggered by: the process starting, and each fresh load of this module.
    * Reacts by:    registering the /review-gate command (commands are the
-   *               module's, so each load registers again).
-   * Dispatches:   nothing else.
+   *               module's, so each load registers again), and loading the
+   *               project's saved list, so files left unreviewed before a
+   *               restart show at once.
+   * Dispatches:   ensureLoaded().
    */
   on('session.start', async ($, e, next) => {
+    // The command first: loading can't then cost the command.
     await $.command.register({
       name: 'review-gate',
       description: 'List the files waiting for review; "/review-gate clear" marks them all reviewed',
     })
+    await ensureLoaded($)
+    return next(e)
+  })
+
+  /**
+   * LISTENER: turn.start
+   *
+   * Triggered by: a main-loop turn starting: a prompt, or a continuation
+   *               turn the engine starts itself (empty text).
+   * Reacts by:    loading the saved list if this session's 'gate' has none
+   *               yet: the case if the host ever starts `$.state` over
+   *               without a session.start (the API leaves /clear
+   *               unspecified). One state read when already loaded.
+   * Dispatches:   ensureLoaded().
+   */
+  on('turn.start', async ($, e, next) => {
+    await ensureLoaded($)
     return next(e)
   })
 
@@ -437,15 +590,18 @@ export const register: Register = on => {
    *               the files themselves, or they need none). Otherwise,
    *               listing every waiting file by full path, which the band
    *               can't fit.
-   * Dispatches:   a write to 'gate' for `clear`; the text shown to the user.
+   * Dispatches:   a write to 'gate' and saveGate() (which deletes the saved
+   *               key) for `clear`; the text shown to the user.
    *
    * Reviewers in flight are kept on `clear`, so one that finishes later is
    * still settled; it has nothing left to clear, which is harmless.
    */
   on('command.run', { command: 'review-gate' }, async ($, e) => {
+    await ensureLoaded($)
     if (e.args.trim() === 'clear') {
       const before = Object.keys((await read($, gateAtom)).pending).length
       await update($, gateAtom, gate => ({ ...gate, pending: {} }))
+      await saveGate($)
       return { text: `Review gate cleared (${before} file${before === 1 ? '' : 's'} marked reviewed).` }
     }
 

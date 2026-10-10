@@ -9,7 +9,7 @@ import { expect, test } from 'claude-code/testing'
 import type { Engine } from 'claude-code/testing'
 import type { On, RenderPropsOf, TurnCompleteReason } from 'claude-code'
 
-import { isDbPath, isExempt } from '../hooks/register'
+import { isDbPath, isExempt, isLoaded } from '../hooks/register'
 
 const BAND_PROPS: RenderPropsOf['AbovePrompt'] = {
   hasSurvey: false,
@@ -30,6 +30,27 @@ const SRC = 'C:/Users/me/Desktop/my-app/src'
 function stubEngine(on: On) {
   const context: string[][] = []
   const toasts: string[] = []
+  // The plugin's store, kept between sessions, and the session's root.
+  // `session.storeFails` makes every store call fail, as a broken disk would.
+  const store = new Map<string, unknown>()
+  const session = { root: 'C:\\Users\\me\\Desktop\\my-app', storeFails: false }
+
+  on('store.get', ($, e) => (session.storeFails ? { deny: 'disk error' } : { value: store.get(e.key) }))
+  on('store.set', ($, e) => {
+    if (session.storeFails) {
+      return { deny: 'disk error' }
+    }
+    store.set(e.key, e.value)
+    return { value: undefined }
+  })
+  on('store.delete', ($, e) => {
+    if (session.storeFails) {
+      return { deny: 'disk error' }
+    }
+    store.delete(e.key)
+    return { value: undefined }
+  })
+  on('session.root', () => ({ value: session.root }))
 
   on('tool.call', { tool: 'Write' }, ($, e) => ({
     result: {
@@ -59,7 +80,7 @@ function stubEngine(on: On) {
     return <Box key="engine-band" />
   })
 
-  return { context, toasts }
+  return { context, toasts, store, session }
 }
 
 async function edit($: Engine, path: string, content = 'x') {
@@ -252,4 +273,75 @@ test('a /clear with files waiting raises a toast', async ($, on) => {
   await edit($, `${SRC}/models/user.py`)
   await $.session.end({ reason: 'clear', sessionId: 's1', resume: { id: 's1' } })
   expect(engine.toasts).toEqual(['Cleared with 2 files (1 database) edited and not reviewed.'])
+})
+
+const KEY = 'gate:C:/Users/me/Desktop/my-app'
+
+test('the list is saved per project, and an empty list leaves no key', async ($, on) => {
+  const engine = stubEngine(on)
+  await edit($, `${SRC}/a.py`)
+  await edit($, `${SRC}/migrations/001.sql`)
+  expect(engine.store.get(KEY)).toEqual({
+    seq: 2,
+    pending: {
+      [`${SRC}/a.py`]: { path: `${SRC}/a.py`, seq: 1, isDb: false },
+      [`${SRC}/migrations/001.sql`]: { path: `${SRC}/migrations/001.sql`, seq: 2, isDb: true },
+    },
+  })
+
+  await spawn($, 'senior-fable', 'r1')
+  await finish($, 'r1')
+  expect(Object.keys((engine.store.get(KEY) as { pending: object }).pending)).toEqual([`${SRC}/migrations/001.sql`])
+
+  await runCommand($, 'clear')
+  expect(engine.store.has(KEY)).toBe(false)
+})
+
+test('after a restart the saved list is back, and the counter carries on', async ($, on) => {
+  const engine = stubEngine(on)
+  // What an earlier process saved: two files, the counter at 7.
+  engine.store.set(KEY, {
+    seq: 7,
+    pending: {
+      [`${SRC}/a.py`]: { path: `${SRC}/a.py`, seq: 6, isDb: false },
+      [`${SRC}/b.py`]: { path: `${SRC}/b.py`, seq: 7, isDb: false },
+      bad: { path: 42 },
+    },
+  })
+  await $.session.start({ cwd: SRC, surface: 'terminal', isInteractive: true })
+  expect((await drawBand($)).line?.text).toBe('Review gate: 2 files unreviewed (a.py, b.py)')
+
+  // A new edit numbers after the saved ones, so a reviewer spawned now
+  // covers the saved files and not the edit made after it started.
+  await spawn($, 'reviewer-opus', 'r1')
+  await edit($, `${SRC}/c.py`)
+  await finish($, 'r1')
+  expect((await drawBand($)).line?.text).toBe('Review gate: 1 file unreviewed (c.py)')
+  expect((engine.store.get(KEY) as { seq: number }).seq).toBe(8)
+})
+
+test('another project keeps its own list', async ($, on) => {
+  const engine = stubEngine(on)
+  engine.store.set('gate:D:/other', { seq: 1, pending: { 'D:/other/x.py': { path: 'D:/other/x.py', seq: 1, isDb: false } } })
+  await $.session.start({ cwd: SRC, surface: 'terminal', isInteractive: true })
+  expect((await drawBand($)).line).toBeUndefined()
+
+  await edit($, `${SRC}/a.py`)
+  expect(engine.store.has('gate:D:/other')).toBe(true)
+  expect(engine.store.has(KEY)).toBe(true)
+})
+
+test('a store that fails never breaks the gate', async ($, on) => {
+  const engine = stubEngine(on)
+  engine.session.storeFails = true
+  await edit($, `${SRC}/a.py`)
+  expect((await drawBand($)).line?.text).toBe('Review gate: 1 file unreviewed (a.py)')
+})
+
+test('a gate kept from 0.1.0 through a hot reload (no root field) counts as not loaded', () => {
+  // `$.state` survives a hot reload, so after the upgrade the old value has
+  // no `root` at all; treating that as loaded would save under 'gate:undefined'.
+  expect(isLoaded({ seq: 1, pending: {}, reviewers: {} } as { root?: unknown })).toBe(false)
+  expect(isLoaded({ root: null })).toBe(false)
+  expect(isLoaded({ root: 'C:/Users/me/Desktop/my-app' })).toBe(true)
 })

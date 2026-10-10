@@ -7,7 +7,7 @@ Five small mods for [Claude Code](https://docs.claude.com/en/docs/claude-code), 
 | [context-band](context-band) | Two lines above the prompt: context size (amber from 150k tokens, red from 200k), then session cost and the 5h/7d usage windows | Compact before the context gets expensive |
 | [loose-ends](loose-ends) | "Still running: …": background shells, terminal tabs Claude opened, preview servers | Stop temporary services when their goal is met |
 | [checkpoint-watch](checkpoint-watch) | How old the project vault's `Checkpoint.md` is and how many edits it is behind | Keep a resumable checkpoint current |
-| [review-gate](review-gate) | Files edited since a reviewer agent last finished; database files wait for a database reviewer. `/review-gate`, `/review-gate clear` | Review each part before the next starts |
+| [review-gate](review-gate) | Files edited since a reviewer agent last finished; database files wait for a database reviewer. The list is saved per project, so it survives restarts. `/review-gate`, `/review-gate clear` | Review each part before the next starts |
 | [agent-spend](agent-spend) | `/agent-spend`: a pane with each subagent's model, tokens and estimated cost against the session total | Know which agents cost what |
 
 The hooks API these use is early access (built against Claude Code 2.1.293), so expect to adjust them as it changes.

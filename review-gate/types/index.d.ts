@@ -34,9 +34,17 @@ export type Gate = {
   seq: number
   /** Unreviewed files, keyed by normalised path. */
   pending: Record<string, PendingEdit>
-  /** Reviewers in flight, keyed by agent id. */
+  /** Reviewers in flight, keyed by agent id. Never saved: they die with the process. */
   reviewers: Record<string, RunningReviewer>
+  /**
+   * The project root whose saved list this is (slashes normalised), or null
+   * until the saved list has been loaded into this session.
+   */
+  root: string | null
 }
+
+/** What is saved in `$.store` per project: the counter and the pending files. */
+export type SavedGate = Pick<Gate, 'seq' | 'pending'>
 
 declare module 'claude-code' {
   interface PluginState {
