@@ -4,7 +4,7 @@ Six small mods for [Claude Code](https://docs.claude.com/en/docs/claude-code), w
 
 | Mod | What you see | The habit it backs |
 |---|---|---|
-| [context-band](context-band) | Two lines above the prompt: context size (amber from 150k tokens, red from 200k), then session cost and the 5h/7d usage windows | Compact before the context gets expensive |
+| [context-band](context-band) | Two lines above the prompt: context size (amber from 250k tokens, red from 350k), then session cost and the 5h/7d usage windows | Compact before the context gets expensive |
 | [loose-ends](loose-ends) | "Still running: …": background shells, terminal tabs Claude opened, preview servers | Stop temporary services when their goal is met |
 | [checkpoint-watch](checkpoint-watch) | How old the project vault's `Checkpoint.md` is and how many edits it is behind | Keep a resumable checkpoint current |
 | [review-gate](review-gate) | Files edited since a reviewer agent last finished; database files wait for a database reviewer. The list is saved per project, so it survives restarts. `/review-gate`, `/review-gate clear` | Review each part before the next starts |
@@ -31,7 +31,7 @@ claude --plugin-dir path/to/claude-mods/context-band
 
 Some mods read defaults you may want to change. They are constants at the top of each `hooks/register.tsx`.
 
-- **context-band**: `WARN_AT` (150k) and `OVER_AT` (200k) tokens; toasts at 80% and 95% of a usage window (`LIMIT_LINES`).
+- **context-band**: `WARN_AT` (250k) and `OVER_AT` (350k) tokens; toasts at 80% and 95% of a usage window (`LIMIT_LINES`).
 - **checkpoint-watch** finds a project's notes vault in two ways:
   - the vault folder has the same name as the project folder, under `~/Documents/Obsidian Docs`;
   - an optional alias table at `~/.claude/scripts/claude_checkpoint_projects.json` maps project folders to vaults:

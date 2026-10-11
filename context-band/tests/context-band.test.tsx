@@ -91,17 +91,22 @@ test('climbs calm -> warn -> over, toasting once per line crossed', async ($, on
   expect(calm?.text).toBe('Context 40k / 1M (4%)')
   expect(engine.toasts).toHaveLength(0)
 
-  await measure($, 160_000)
+  // Just under the amber line: still calm, no toast.
+  await measure($, 249_000)
+  expect((await drawBand($))?.props).toMatchObject({ dimColor: true })
+  expect(engine.toasts).toHaveLength(0)
+
+  await measure($, 260_000)
   const warn = await drawBand($)
-  expect(warn?.text).toMatch(/plan a \/compact before 200k/)
+  expect(warn?.text).toMatch(/plan a \/compact before 350k/)
   expect(warn?.props).toMatchObject({ color: 'warning' })
   expect(engine.toasts).toHaveLength(1)
 
   // Still in the warn tier: no second toast.
-  await measure($, 170_000)
+  await measure($, 340_000)
   expect(engine.toasts).toHaveLength(1)
 
-  await measure($, 210_000)
+  await measure($, 360_000)
   const over = await drawBand($)
   expect(over?.props).toMatchObject({ color: 'error' })
   expect(engine.toasts).toHaveLength(2)
@@ -110,7 +115,7 @@ test('climbs calm -> warn -> over, toasting once per line crossed', async ($, on
 test('a compaction hides the band until the next measurement, and re-arms the toasts', async ($, on) => {
   const engine = stubEngine(on)
 
-  await measure($, 210_000)
+  await measure($, 360_000)
   expect(engine.toasts).toHaveLength(1)
 
   await $.session.compact({ trigger: 'manual', messages: [SUMMARY] })
@@ -119,8 +124,8 @@ test('a compaction hides the band until the next measurement, and re-arms the to
   await measure($, 30_000)
   expect((await drawBand($))?.text).toBe('Context 30k / 1M (3%)')
 
-  // Climbing past 150k again warns again.
-  await measure($, 155_000)
+  // Climbing past 250k again warns again.
+  await measure($, 255_000)
   expect(engine.toasts).toHaveLength(2)
 })
 
@@ -176,10 +181,10 @@ test('session.start seeds the band from the current usage', async ($, on) => {
 
 test('draws the same line on the terminal and in the desktop app', async ($, on) => {
   stubEngine(on)
-  await measure($, 160_000)
+  await measure($, 260_000)
 
   for (const surface of ['terminal', 'desktop'] as const) {
-    expect((await drawBand($, surface))?.text).toMatch(/^Context 160k \/ 1M \(16%\)/)
+    expect((await drawBand($, surface))?.text).toMatch(/^Context 260k \/ 1M \(26%\)/)
   }
 })
 
