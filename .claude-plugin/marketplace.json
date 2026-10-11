@@ -3,7 +3,7 @@
   "owner": {
     "name": "Gat0rRex"
   },
-  "description": "Claude Code mods: context band, loose ends, checkpoint watch, review gate, agent spend.",
+  "description": "Claude Code mods: context band, loose ends, checkpoint watch, review gate, agent spend, context handoff.",
   "plugins": [
     {
       "name": "context-band",
@@ -24,6 +24,10 @@
     {
       "name": "agent-spend",
       "source": "./agent-spend"
+    },
+    {
+      "name": "context-handoff",
+      "source": "./context-handoff"
     }
   ]
 }

@@ -1,6 +1,6 @@
 # claude-mods
 
-Five small mods for [Claude Code](https://docs.claude.com/en/docs/claude-code), written as plugins of function hooks. Each one turns a working habit into something you can see: a line in the band above the prompt, a toast, a short note to the model, or a pane. None of them blocks anything. They watch, and they fail open.
+Six small mods for [Claude Code](https://docs.claude.com/en/docs/claude-code), written as plugins of function hooks. Each one turns a working habit into something you can see: a line in the band above the prompt, a toast, a short note to the model, or a pane. None of them blocks anything. They watch, and they fail open.
 
 | Mod | What you see | The habit it backs |
 |---|---|---|
@@ -9,6 +9,7 @@ Five small mods for [Claude Code](https://docs.claude.com/en/docs/claude-code), 
 | [checkpoint-watch](checkpoint-watch) | How old the project vault's `Checkpoint.md` is and how many edits it is behind | Keep a resumable checkpoint current |
 | [review-gate](review-gate) | Files edited since a reviewer agent last finished; database files wait for a database reviewer. The list is saved per project, so it survives restarts. `/review-gate`, `/review-gate clear` | Review each part before the next starts |
 | [agent-spend](agent-spend) | `/agent-spend`: a pane with each subagent's model, tokens and estimated cost against the session total | Know which agents cost what |
+| [context-handoff](context-handoff) | Nothing on screen: a note to the model when the context passes 250k tokens (heads-up) and 300k (hand off), and on every prompt past 300k | Finish the task you're on, then hand off to a fresh session instead of starting another |
 
 The hooks API these use is early access (built against Claude Code 2.1.293), so expect to adjust them as it changes.
 
@@ -20,7 +21,7 @@ In a terminal session of Claude Code:
 /plugin install context-band --marketplace Gat0rRex/claude-mods
 ```
 
-Answer `y` to add the marketplace, then pick a scope. Repeat with `loose-ends`, `checkpoint-watch`, `review-gate` or `agent-spend` for the others. To try one without installing it:
+Answer `y` to add the marketplace, then pick a scope. Repeat with `loose-ends`, `checkpoint-watch`, `review-gate`, `agent-spend` or `context-handoff` for the others. To try one without installing it:
 
 ```
 claude --plugin-dir path/to/claude-mods/context-band
@@ -45,6 +46,7 @@ Some mods read defaults you may want to change. They are constants at the top of
     ```
   It watches `<vault>/01 Overview/Checkpoint.md` and goes amber at 10 edits once the note is over an hour old.
 - **review-gate**: `GENERAL_REVIEWERS` and `DB_REVIEWER` name the agent types whose finished answer counts as a review. Set them to your own agents. Database paths follow the globs in `DB_FOLDERS` and `isDbPath()`. Notes (`.md`, `.txt`), Obsidian vaults and the temp folder are not counted.
+- **context-handoff**: `HEADS_UP` (250k) and `HAND_OFF` (300k) tokens; for a model with a smaller window they drop to 70% and 80% of it. The hand-off note points the model at a `context-handoff` skill holding your wrap-up steps; without one, the note still says to finish the current task first.
 - **agent-spend**: `PRICES` holds API list prices per million tokens (as of 2026-09-25; Haiku 5.5 added 2026-10-10). Cache writes are priced as 1-hour writes. Haiku 5.5 is always priced at its rate for prompts up to 100K tokens, since a subagent's usage arrives summed over its requests, so a Haiku agent with a longer context is undercounted. A model missing from the table shows `?`.
 
 ## How they are built
@@ -53,7 +55,7 @@ Every module has a header block on its role and event flow, and each listener an
 
 - **Band mods stack.** The band above the prompt is one slot. Each mod draws its lines above `await next(e)`, so it never hides another mod's.
 - **Observers fail open.** Hooks on `tool.call`, `agent.spawn` and `prompt.submit` have no `.catch` on purpose. A hook that throws is skipped, and the work goes ahead.
-- **Events, not polling.** Figures come from `session.measure`, `turn.complete` and tool results. State lives in `$.state` atoms, and a write redraws the readers.
+- **Events, not polling.** Figures come from `session.measure`, `turn.complete` and tool results. State lives in `$.state` atoms, and a write redraws the readers. The one mid-turn read is context-handoff's: it asks `$.session.usage()` after each tool call, because `session.measure` comes only after a turn ends.
 
 ## Tests
 

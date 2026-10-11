@@ -1,0 +1,7 @@
+{
+  "name": "context-handoff",
+  "version": "0.1.0",
+  "author": { "name": "Gat0rRex" },
+  "description": "Tells the model when the context passes 250k tokens (heads-up) and 300k (hand off), so it finishes the task it's on and then hands off to a fresh session instead of starting another.",
+  "types": "./types/index.d.ts"
+}
