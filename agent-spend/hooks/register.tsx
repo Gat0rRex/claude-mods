@@ -21,9 +21,14 @@
 // Costs are API list prices (as of 2026-09-25), copied into PRICES below. A
 // turn's usage has no split of cache writes by lifetime, so every write is
 // priced as a 1-hour write (2x input), which is what Claude Code mostly
-// writes: at worst a slight overcount. A model missing from the table (Haiku
-// 5.5 today) is shown as "?" and never priced as something else. The
-// engine's session figure is the authority; the per-agent numbers are for
+// writes: at worst a slight overcount. Haiku 5.5 bills 5x its rates on any
+// request whose prompt is over 100K tokens, but a turn's usage sums every
+// request of the run, so per-request prompt sizes are gone: it is always
+// priced at the lower card. A Haiku agent whose context grew past 100K can
+// be undercounted by up to 5x. (`turn.step` carries per-request usage and
+// could pick the card per request; not done yet.) A model missing from the
+// table is shown as "?" and never priced as something else. The engine's
+// session figure is the authority; the per-agent numbers are for
 // comparing agents, not for billing. The usage carries only the four token
 // counts, so fast mode (a price multiplier) and web-search fees can't be
 // counted, and a subagent's own compaction isn't in its turn's usage: small
@@ -52,8 +57,9 @@ import type { AgentRow, AgentStatus, AgentTokens } from '../types'
 // ---------------------------------------------------------------------------
 
 // US dollars per million tokens: (input, output, cache read). API list prices
-// as of 2026-09-25; update them when the published prices change. Keys are
-// prefixes, so dated ids and suffixes resolve.
+// as of 2026-09-25 (Haiku 5.5 added 2026-10-10); update them when the
+// published prices change. Keys are prefixes, so dated ids and suffixes
+// resolve.
 const PRICES: Record<string, readonly [number, number, number]> = {
   'claude-fable-5-1': [10.0, 50.0, 0.25],
   'claude-mythos-5-1': [10.0, 50.0, 0.25],
@@ -72,6 +78,9 @@ const PRICES: Record<string, readonly [number, number, number]> = {
   'claude-sonnet-4-6': [3.0, 15.0, 0.3],
   'claude-sonnet-4-5': [3.0, 15.0, 0.3],
   'claude-sonnet-4': [3.0, 15.0, 0.3],
+  // Prompts up to 100K tokens; above that the API bills [0.5, 2.5, 0.05],
+  // which a turn's summed usage can't tell apart (see THE ESTIMATE).
+  'claude-haiku-5-5': [0.1, 0.5, 0.01],
   'claude-haiku-4-5': [1.0, 5.0, 0.1],
 }
 
@@ -216,7 +225,7 @@ export function paneLines(
       text: `Subagents ≈ $${total.toFixed(2)}${anyUnpriced ? ' + unpriced' : ''} of the session's ${session} (Claude Code's figure, as of the last main turn).`,
       tone: 'note',
     },
-    { text: 'Estimates at API list prices; cache writes priced as 1-hour writes; fast mode and web search not counted.', tone: 'note' },
+    { text: 'Estimates at API list prices; cache writes priced as 1-hour writes; Haiku 5.5 always at its under-100K-prompt rate; fast mode and web search not counted.', tone: 'note' },
   ]
 }
 

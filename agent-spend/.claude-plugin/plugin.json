@@ -1,6 +1,6 @@
 {
   "name": "agent-spend",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "author": { "name": "Gat0rRex" },
   "description": "/agent-spend opens a pane listing each subagent's type, model, tokens and estimated cost against the session's total.",
   "types": "./types/index.d.ts"

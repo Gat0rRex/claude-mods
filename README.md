@@ -45,7 +45,7 @@ Some mods read defaults you may want to change. They are constants at the top of
     ```
   It watches `<vault>/01 Overview/Checkpoint.md` and goes amber at 10 edits once the note is over an hour old.
 - **review-gate**: `GENERAL_REVIEWERS` and `DB_REVIEWER` name the agent types whose finished answer counts as a review. Set them to your own agents. Database paths follow the globs in `DB_FOLDERS` and `isDbPath()`. Notes (`.md`, `.txt`), Obsidian vaults and the temp folder are not counted.
-- **agent-spend**: `PRICES` holds API list prices per million tokens (as of 2026-09-25). Cache writes are priced as 1-hour writes. A model missing from the table shows `?`.
+- **agent-spend**: `PRICES` holds API list prices per million tokens (as of 2026-09-25; Haiku 5.5 added 2026-10-10). Cache writes are priced as 1-hour writes. Haiku 5.5 is always priced at its rate for prompts up to 100K tokens, since a subagent's usage arrives summed over its requests, so a Haiku agent with a longer context is undercounted. A model missing from the table shows `?`.
 
 ## How they are built
 

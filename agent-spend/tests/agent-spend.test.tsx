@@ -99,7 +99,8 @@ async function drawPane($: Engine) {
 test('prices by longest prefix, leaves unknown models unpriced', () => {
   expect(priceFor('claude-opus-5-5')).toEqual([4.0, 20.0, 0.2])
   expect(priceFor('claude-opus-5-20260101')).toEqual([5.0, 25.0, 0.5])
-  expect(priceFor('claude-haiku-5-5')).toBeUndefined()
+  expect(priceFor('claude-haiku-5-5')).toEqual([0.1, 0.5, 0.01])
+  expect(priceFor('claude-future-1')).toBeUndefined()
 
   // 1M input at $10, 100k output at $50, 2M cache reads at $0.25, 100k
   // cache writes at 2 x $10.
@@ -139,12 +140,22 @@ test('rows show type, model, tokens, cost and status, against the session total'
 test('a continued agent adds up; an unpriced model shows "?"', async ($, on) => {
   stubEngine(on)
   await spawn($, 'scout-haiku', 's1')
-  await finish($, 's1', usage('claude-haiku-5-5', 1_000, 1_000))
-  await finish($, 's1', usage('claude-haiku-5-5', 1_000, 1_000), 'aborted')
+  await finish($, 's1', usage('claude-future-1', 1_000, 1_000))
+  await finish($, 's1', usage('claude-future-1', 1_000, 1_000), 'aborted')
 
   const lines = await drawPane($)
-  expect(lines[1]).toMatch(/^scout-haiku\s+haiku-5-5\s+2\.0k\s+2\.0k\s+\?\s+stopped/)
+  expect(lines[1]).toMatch(/^scout-haiku\s+future-1\s+2\.0k\s+2\.0k\s+\?\s+stopped/)
   expect(lines).toContain("Subagents ≈ $0.00 + unpriced of the session's unknown yet (Claude Code's figure, as of the last main turn).")
+})
+
+test('a Haiku 5.5 scout is priced, not "?"', async ($, on) => {
+  stubEngine(on)
+  await spawn($, 'scout-haiku', 's1')
+  await finish($, 's1', usage('claude-haiku-5-5', 1_000_000, 100_000, 2_000_000))
+
+  // A table test: 1M x $0.10 + 100k x $0.50 + 2M x $0.01 = $0.17. A real
+  // scout this size would mostly bill at the long-prompt card (5x).
+  expect((await drawPane($))[1]).toMatch(/^scout-haiku\s+haiku-5-5\s+3\.0M\s+100\.0k\s+\$0\.17\s+done/)
 })
 
 test('an agent spawned before the mod loaded is named from the agent list', async ($, on) => {
@@ -201,7 +212,7 @@ test('a short pane still gets every row', async ($, on) => {
 test('/agent-spend names an unpriced model in its summary', async ($, on) => {
   stubEngine(on)
   await spawn($, 'scout-haiku', 'h1')
-  await finish($, 'h1', usage('claude-haiku-5-5', 1_000, 100))
+  await finish($, 'h1', usage('claude-future-1', 1_000, 100))
 
   const ran = await $.command.run({
     command: 'agent-spend',
