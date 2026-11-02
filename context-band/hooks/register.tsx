@@ -12,8 +12,8 @@
 // nothing.
 //
 // The band follows a simple cost rule: every model call re-reads the whole
-// context, so cost scales with the tokens held. Past 250k tokens, plan a
-// /compact with keep/drop instructions; past 350k, /compact now (or write a
+// context, so cost scales with the tokens held. Past 300k tokens, plan a
+// /compact with keep/drop instructions; past 400k, /compact now (or write a
 // checkpoint and /clear). The spend line turns amber, then red, as a usage
 // window nears its limit (80%, then 95%).
 //
@@ -60,16 +60,18 @@ import type { ContextReading, ContextTier, LimitReading, SpendReading } from '..
 // ---------------------------------------------------------------------------
 
 // Absolute token counts, not percentages: cost scales with tokens re-read per
-// call, whatever the model's window is. A 1M-window model at 250k is only 25%
+// call, whatever the model's window is. A 1M-window model at 300k is only 30%
 // full but already in the expensive zone.
 //
-// Amber starts on context-handoff's heads-up line (250k; that mod scales its
-// lines down on windows under ~360k, this one never does), so the person sees
-// the colour change when the model gets its first note. Red starts past that
-// mod's hand-off line (300k): a session still growing at 350k should already
-// have handed off.
-const WARN_AT = 250_000
-const OVER_AT = 350_000
+// Red from 400k is the owner's choice (2026-11-01), and amber keeps the 100k
+// gap it had in 0.3.1 (250k and 350k). Amber now starts on context-handoff's
+// hand-off line (300k on windows of 375k and up; that mod scales its lines
+// down on smaller windows, this one never does), so the person sees the colour
+// change when the model is told to hand off. That mod's heads-up note (250k)
+// now arrives while this line is still dim. Red means a session still growing
+// 100k past the hand-off line.
+const WARN_AT = 300_000
+const OVER_AT = 400_000
 
 // Tiers in order, so "did we move up?" is a number comparison.
 const RANK: Record<ContextTier, number> = { calm: 0, warn: 1, over: 2 }

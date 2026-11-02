@@ -10,9 +10,9 @@
 
 /**
  * Which side of the two cost lines the context sits on.
- * - calm: under 250k tokens
- * - warn: 250k to 350k, time to plan a /compact
- * - over: 350k and up, every model call now re-reads all of it
+ * - calm: under 300k tokens
+ * - warn: 300k to 400k, time to plan a /compact
+ * - over: 400k and up, every model call now re-reads all of it
  */
 export type ContextTier = 'calm' | 'warn' | 'over'
 
